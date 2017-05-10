@@ -478,7 +478,7 @@ if any(flatten(~isfinite(data{1})))
 end
 
 % if opt.reconmask is provided, vectorize and remove zeros
-if isfield(opt,'reconmask') 
+if isfield(opt,'reconmask') && size(data{1},4) >1
     numvoxels = size(reshape(opt.reconmask, [],1),1);
     fprintf('*** GLMdenoisedata: vectorizing data.');
     mask_ind = opt.reconmask(:,:,:,1) ~= 0; % generate the indices where data live
