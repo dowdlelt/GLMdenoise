@@ -175,6 +175,7 @@ function [results,denoiseddata] = GLMdenoisedata(design,data,stimdur,tr,hrfmodel
 %   <reconmask> (optional) is a X x Y x Z mask that will be used to turn the
 %     (presumably) 3D data into a data x time vector (save RAM, time, sanity)
 %     also used to reconstruct the data back into its 3D state for figures.
+%   <wantpcmap> (optional) is whether to compute and save PC maps. Default: 0.
 % <figuredir> (optional) is a directory to which to write figures.  (If the
 %   directory does not exist, we create it; if the directory already exists,
 %   we delete its contents so we can start afresh.)  If [], no figures are
@@ -367,7 +368,7 @@ function [results,denoiseddata] = GLMdenoisedata(design,data,stimdur,tr,hrfmodel
 %   that the y-axis is now converted into the equivalent amount of data gained.  
 %   For example, if SNR is boosted from 4 to 8, this is equivalent to having 
 %   obtained 300% more data than was actually obtained.
-% - "PCmap/PCmap_runN_numO.png" shows the estimated weights for the Oth PC
+% - "PCmap/PCmap_runN_numO.png" (if wantpcmap==1) shows the estimated weights for the Oth PC
 %   for run N.  The range is -A to A where A is the 99th percentile of the
 %   absolute value of all weights across all runs.  The colormap proceeds
 %   from blue (negative) to black (0) to red (positive).
@@ -385,6 +386,8 @@ function [results,denoiseddata] = GLMdenoisedata(design,data,stimdur,tr,hrfmodel
 % times at which data are actually sampled.
 %
 % History:
+% - 2025/08/20: Having an issue with PCMap plotting, off and on. Adding option 
+%               to disable until I can sort that out. 
 % - 2018/07/20: Added plots of PC timecourse below pcweight images.  
 %               Added a new struct for opt, 'reconmask'. This will be  
 %               used to vectorize the data. Suggestion is whole brain mask
@@ -596,6 +599,9 @@ end
 if ~isfield(opt,'wantsanityfigures') || isempty(opt.wantsanityfigures)
   opt.wantsanityfigures = 1;
 end
+if ~isfield(opt,'wantpcmap') || isempty(opt.wantpcmap)
+  opt.wantpcmap = 0;
+end
 if ~isfield(opt,'drawfunction') || isempty(opt.drawfunction)
   opt.drawfunction = @(vals) vals;
 end
@@ -615,7 +621,9 @@ if ~isempty(figuredir)
     assert(rmdir(figuredir,'s'));
   end
   assert(mkdir(figuredir));
-  assert(mkdir(fullfile(figuredir,'PCmap')));
+  if opt.wantpcmap
+    assert(mkdir(fullfile(figuredir,'PCmap')));
+  end
   if opt.wantsanityfigures
     assert(mkdir(fullfile(figuredir,'CheckData')));
   end
@@ -1336,32 +1344,33 @@ if ~isempty(figuredir)
   end
   
   % write out maps of pc weights
-  thresh = prctile(abs(results.pcweights(:)),99);
-  for p=1:size(results.pcweights,dimdata+1)
-    for q=1:size(results.pcweights,dimdata+2)
-      temp = subscript(results.pcweights,[repmat({':'},[1 dimdata]) {p} {q}]);
-                    if isfield(opt, 'reconmask')
-                        temp_recon = mask_vec;
-                        temp_recon(mask_vec ~=0) = temp;
-                        temp_recon = reshape(temp_recon, x_dim,y_dim,z_dim);
-                        temp=temp_recon;
-                    end
+  if opt.wantpcmap ~= 0
+    thresh = prctile(abs(results.pcweights(:)),99);
+    for p=1:size(results.pcweights,dimdata+1)
+      for q=1:size(results.pcweights,dimdata+2)
+        temp = subscript(results.pcweights,[repmat({':'},[1 dimdata]) {p} {q}]);
+                      if isfield(opt, 'reconmask')
+                          temp_recon = mask_vec;
+                          temp_recon(mask_vec ~=0) = temp;
+                          temp_recon = reshape(temp_recon, x_dim,y_dim,z_dim);
+                          temp=temp_recon;
+                      end
+                      
+                      %Go ahead and create the map as it was originaly done
+                      temp = (255*makeimagestack(opt.drawfunction(temp),[-thresh thresh]));
+                      
+                      %Make sure the x axis is the right length
+                      time_plot_dim = size(results.pcregressors{1,q}(:,p),1); 
                     
-                    %Go ahead and create the map as it was originaly done
-                    temp = (255*makeimagestack(opt.drawfunction(temp),[-thresh thresh]));
-                    
-                    %Make sure the x axis is the right length
-                    time_plot_dim = size(results.pcregressors{1,q}(:,p),1); 
-                   
-                    %Create a 3x3 plot space, use the majority for the
-                    %weightmap, only a the last row for weight plot.
-                    subplot(4,3,[1, 2, 3, 4, 5, 6, 7, 8, 9]); imshow(temp,cmapsign(256));
-                    subplot(4,3,[10, 11, 12]); plot(results.pcregressors{1,q}(:,p)); xlim([0, time_plot_dim]);
-                    
-                    %save everything to the right place
-                    label = strcat('PCmap_run',num2str(q), '_num' , num2str(p));
-                    print(fullfile(figuredir, 'PCmap', label), '-dpng');
+                      %Create a 3x3 plot space, use the majority for the
+                      %weightmap, only a the last row for weight plot.
+                      subplot(4,3,[1, 2, 3, 4, 5, 6, 7, 8, 9]); imshow(temp,cmapsign(256));
+                      subplot(4,3,[10, 11, 12]); plot(results.pcregressors{1,q}(:,p)); xlim([0, time_plot_dim]);
+                      
+                      %save everything to the right place
+                      label = strcat('PCmap_run',num2str(q), '_num' , num2str(p));
+                      print(fullfile(figuredir, 'PCmap', label), '-dpng');
+      end
     end
-  end
-
+  end % if we want PCmaps or not. 
 end
